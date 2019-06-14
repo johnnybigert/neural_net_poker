@@ -53,10 +53,10 @@ class AllInBot:
         pass
 
     def game_ended(self, profit):
-        input = self._encode_input(self.hole_cards, self.current_state)
-        output = self._encode_output(profit)
-        self._train_model(input, output)
-        print(f'train - hole cards: {self.hole_cards[0]} {self.hole_cards[1]}, state: {self.current_state} output: {output[0][0]:.3} (${profit})')
+        self._train_model(self.hole_cards, self.current_state, profit)
+        if self._heros_small_blind_move_was_all_in(self.current_state):
+            small_blind_state = ([1, 0, 0], [1, 0, 0])
+            self._train_model(self.hole_cards, small_blind_state, profit)  # to be able to predict SB action
         pass
 
 
@@ -87,8 +87,12 @@ class AllInBot:
         else:
             return 0   # fold
 
-    def _train_model(self, input, output):
+    def _train_model(self, hole_cards, state, profit):
+        input = self._encode_input(hole_cards, state)
+        output = self._encode_output(profit)
         self.model.fit(input, output, epochs=1, verbose=2)
+        print(f'train - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {state} '
+              f'output: {output[0][0]:.3} (${profit})')
 
     def _update_current_state(self, action_number, a):
         used, actions = self.current_state
@@ -111,6 +115,13 @@ class AllInBot:
         fold_actions[i] = 0
         all_in_actions[i] = 1
         return (used, fold_actions), (used, all_in_actions)
+
+    def _heros_small_blind_move_was_all_in(self, state):
+        if self.hero_posted_big_blind:
+            return False
+        actions = state[1]
+        hero_sb_action = actions[0]
+        return hero_sb_action == 1   # all-in
 
     def _encode_input(self, hole_cards, state):
         result = self._encode_hole_cards(hole_cards)
