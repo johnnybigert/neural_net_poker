@@ -70,7 +70,7 @@ class AllInBot:
         return np.random.random() < self.eps
 
     def _predict_action(self, hole_cards, current_state):
-        fold_state, all_in_state = self._fold_and_all_in(current_state)
+        fold_state, all_in_state = self._fold_and_all_in_states(current_state)
 
         fold_input = self._encode_input(hole_cards, fold_state)
         fold_prediction = self.model.predict(fold_input)[0][0]
@@ -101,7 +101,7 @@ class AllInBot:
         actions[i] = a
         #print(self.current_state)
 
-    def _fold_and_all_in(self, state):
+    def _fold_and_all_in_states(self, state):
         used_list = enumerate(state[0])
         indexes = [index for (index, value) in used_list if value == 1]
         if indexes:
@@ -185,9 +185,9 @@ class AllInBot:
         if hero_is_big_blind:
             state = [[0, 1, 0], [0, 1, 0]]
         else:
-            state = [[1, 0, 0], [1, 0, 0]]
+            state = [[0, 0, 0], [0, 0, 0]]
 
-        fold_state, all_in_state = self._fold_and_all_in(state)
+        fold_state, all_in_state = self._fold_and_all_in_states(state)
 
         fold_input = self._encode_input(hole_cards, fold_state)
         fold_prediction = self.model.predict(fold_input)[0][0]
