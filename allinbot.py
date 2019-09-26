@@ -19,12 +19,16 @@ class AllInBot:
         self.hole_cards = []
         self.hero_posted_big_blind = False
         self.eps = 0
+        self.batch_size = 3000
 
         self.new_game(['S5', 'DQ'], True)  # random cards to get input size
 
         # examples to determine input/output size
         self.input_size = self._encode_input(self.hole_cards, self.current_state).shape[1]
         self.output_size = self._encode_output(100).shape[1]
+        self.batch_input = np.zeros(shape=(self.batch_size, self.input_size))
+        self.batch_output = np.zeros(shape=(self.batch_size, self.output_size))
+        self.batch_counter = 0
 
         self.model = Sequential()
         self.model.add(Dense(10, input_dim=self.input_size, activation='relu'))
@@ -75,12 +79,14 @@ class AllInBot:
         fold_input = self._encode_input(hole_cards, fold_state)
         fold_prediction = self.model.predict(fold_input)[0][0]
         fold_profit = self._decode_output(fold_prediction)
-        print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {fold_state} output: {fold_prediction:.3} (${fold_profit:.3})')
+        if self.batch_counter % 100 == 0:
+            print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {fold_state} output: {fold_prediction:.3} (${fold_profit:.3})')
 
         all_in_input = self._encode_input(hole_cards, all_in_state)
         all_in_prediction = self.model.predict(all_in_input)[0][0]
         all_in_profit = self._decode_output(all_in_prediction)
-        print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {all_in_state} output: {all_in_prediction:.3} (${all_in_profit:.3})')
+        if self.batch_counter % 100 == 0:
+            print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {all_in_state} output: {all_in_prediction:.3} (${all_in_profit:.3})')
 
         if all_in_profit > fold_profit:
             return 1   # all-in
@@ -90,9 +96,15 @@ class AllInBot:
     def _train_model(self, hole_cards, state, profit):
         input = self._encode_input(hole_cards, state)
         output = self._encode_output(profit)
-        self.model.fit(input, output, epochs=1, verbose=2)
-        print(f'train - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {state} '
-              f'output: {output[0][0]:.3} (${profit})')
+        self.batch_input[self.batch_counter] = input
+        self.batch_output[self.batch_counter] = output
+        self.batch_counter += 1
+        if self.batch_counter % 100 == 0:
+            print(f'train {self.batch_counter} - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {state} '
+                  f'output: {output[0][0]:.3} (${profit})')
+        if self.batch_counter == self.batch_size:
+            self.model.fit(self.batch_input, self.batch_output, epochs=100, verbose=2)
+            self.batch_counter = 0
 
     def _update_current_state(self, action_number, a):
         used, actions = self.current_state

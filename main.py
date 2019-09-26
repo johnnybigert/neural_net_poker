@@ -10,6 +10,7 @@ if __name__ == '__main__':
     bot = AllInBot()
     hero = BotPlayer(bot)
     stop = True
+    last_batch_counter = 0
     for round in range(1000001):
         opp = AllInRandomPlayer()
 
@@ -22,7 +23,9 @@ if __name__ == '__main__':
         game_result = start_poker(config, verbose=0)
 
         stack_log.append([player['stack'] for player in game_result['players'] if player['uuid'] == hero.uuid])
-        print('Round %d, avg. stack: %d' % (round, (int(np.mean(stack_log)))))
 
-        if round % 5000 == 0:
+        if bot.batch_counter < last_batch_counter:  # restarted
             bot.output_predictions()
+            print(f'Round {round}, avg. stack: {int(np.mean(stack_log))}')
+            stack_log = []
+        last_batch_counter = bot.batch_counter
