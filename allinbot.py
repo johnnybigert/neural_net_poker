@@ -12,23 +12,24 @@ class AllInBot:
     def __init__(self):
         super().__init__()
 
-        self.gamma = 0.95
-        self.start_eps = 0.5
-        self.eps_decay = 0.99999
+        self.debug_level = 0
+        self.batch_size = 5000    # input size to the training phase
+        self.batch_epochs = 10    # epochs (iterations) in the training
+        self.fit_batch_size = 32  # input size is chopped up into 'batch size' pieces for neural network to train on
+
+        self.start_eps = 0.5      # percentage of random moves vs moved from prediction. 0 = only predictions
+        self.eps_decay = 0.99999  # the rate at which eps decreases towards 0
+
         self.current_state = None
         self.hole_cards = []
         self.hero_posted_big_blind = False
-        self.eps = 0
-        self.batch_size = 3000
+        self.eps = self.start_eps
 
         self.new_game(['S5', 'DQ'], True)  # random cards to get input size
 
         # examples to determine input/output size
         self.input_size = self._encode_input(self.hole_cards, self.current_state).shape[1]
         self.output_size = self._encode_output(100).shape[1]
-        self.batch_input = np.zeros(shape=(self.batch_size, self.input_size))
-        self.batch_output = np.zeros(shape=(self.batch_size, self.output_size))
-        self.batch_counter = 0
 
         self.model = Sequential()
         self.model.add(Dense(10, input_dim=self.input_size, activation='relu'))
@@ -36,20 +37,29 @@ class AllInBot:
         self.model.add(Dense(self.output_size, activation='sigmoid'))
         self.model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mae'])
 
+        self.batch_input = np.zeros(shape=(self.batch_size, self.input_size))
+        self.batch_output = np.zeros(shape=(self.batch_size, self.output_size))
+        self.batch_counter = 0
+
     def new_game(self, hole_cards, hero_posted_big_blind):
         self.current_state = ([0, 0, 0], [0, 0, 0])
         self.hole_cards = hole_cards
         self.hero_posted_big_blind = hero_posted_big_blind
-        self.eps = self.start_eps
+        if self.debug_level > 0:
+            print(f'  hand is {self.hole_cards}')
 
     def heros_turn(self, action_number, hero_is_all_in, opponent_is_all_in):
         if self._is_randomized_action():
             a = np.random.randint(0, 2)
+            if self.debug_level > 0:
+                print(f'  using random action, eps: {self.eps:.3}')
         else:
             a = self._predict_action(self.hole_cards, self.current_state)
         self._update_current_state(action_number, a)
-        #print(f'update hero {action_number} {a}')
-        return ('fold', 'allin')[a]
+        result = ('fold', 'allin')[a]
+        if self.debug_level > 0:
+            print(f'  ACTION IS {result}')
+        return result
 
     def opponents_turn(self, action_number, hero_is_all_in, opponent_is_all_in):
         self._update_current_state(action_number, 1 if opponent_is_all_in else 0)
@@ -79,14 +89,14 @@ class AllInBot:
         fold_input = self._encode_input(hole_cards, fold_state)
         fold_prediction = self.model.predict(fold_input)[0][0]
         fold_profit = self._decode_output(fold_prediction)
-        if self.batch_counter % 100 == 0:
-            print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {fold_state} output: {fold_prediction:.3} (${fold_profit:.3})')
+        if self.debug_level > 0:
+            print(f'  predict FOLD - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {fold_state} output: {fold_prediction:.3} (${fold_profit:.3})')
 
         all_in_input = self._encode_input(hole_cards, all_in_state)
         all_in_prediction = self.model.predict(all_in_input)[0][0]
         all_in_profit = self._decode_output(all_in_prediction)
-        if self.batch_counter % 100 == 0:
-            print(f'predict - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {all_in_state} output: {all_in_prediction:.3} (${all_in_profit:.3})')
+        if self.debug_level > 0:
+            print(f'  predict ALLIN - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {all_in_state} output: {all_in_prediction:.3} (${all_in_profit:.3})')
 
         if all_in_profit > fold_profit:
             return 1   # all-in
@@ -99,11 +109,11 @@ class AllInBot:
         self.batch_input[self.batch_counter] = input
         self.batch_output[self.batch_counter] = output
         self.batch_counter += 1
-        if self.batch_counter % 100 == 0:
-            print(f'train {self.batch_counter} - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {state} '
+        if self.debug_level > 0:
+            print(f'  train {self.batch_counter} - hole cards: {hole_cards[0]} {hole_cards[1]}, state: {state} '
                   f'output: {output[0][0]:.3} (${profit})')
         if self.batch_counter == self.batch_size:
-            self.model.fit(self.batch_input, self.batch_output, epochs=100, verbose=2)
+            self.model.fit(self.batch_input, self.batch_output, epochs=self.batch_epochs, batch_size=self.fit_batch_size, verbose=2)
             self.batch_counter = 0
 
     def _update_current_state(self, action_number, a):
